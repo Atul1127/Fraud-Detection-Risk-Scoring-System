@@ -28,7 +28,9 @@ def test_train_val_test_split_has_strict_temporal_boundaries():
         "isFraud": [0, 1] * 5,
     })
     X_train, X_val, X_test, y_train, y_val, y_test = train_val_test_split(df, cfg)
-    assert len(X_train) == len(X_val) == len(X_test) == 2
+    assert len(X_train) == 6
+    assert len(X_val) == 2
+    assert len(X_test) == 2
     assert X_train["TransactionDT"].max() < X_val["TransactionDT"].min()
     assert X_val["TransactionDT"].max() < X_test["TransactionDT"].min()
     assert len(y_train) + len(y_val) + len(y_test) == len(df)
