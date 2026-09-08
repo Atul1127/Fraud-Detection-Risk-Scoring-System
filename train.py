@@ -10,39 +10,23 @@ import yaml
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train fraud detection ensemble")
     parser.add_argument("--config", default="config.yaml")
-    parser.add_argument(
-        "--force-preprocess",
-        action="store_true",
-        help="Recompute features even if cache exists",
-    )
-    parser.add_argument(
-        "--skip-smote",
-        action="store_true",
-        help="Skip SMOTE oversampling",
-    )
+    parser.add_argument("--force-preprocess", action="store_true", help="Recompute features even if cache exists")
+    parser.add_argument("--skip-smote", action="store_true", help="Skip SMOTE oversampling")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
-    from src.data.loader import (
-        load_raw,
-        train_val_split,
-        save_processed,
-        load_processed,
-        processed_exists,
-    )
+    from src.data.loader import load_raw, train_val_test_split, save_processed, load_processed, processed_exists
     from src.data.features import build_features, apply_smote, fit_category_mappings
     from src.train import Trainer
 
     mlflow_enabled = cfg.get("mlflow", {}).get("enabled", False)
     if mlflow_enabled:
         from src.mlflow_tracker import log_training_run, start_run
-
         mlflow_context = start_run(cfg)
     else:
         mlflow_context = nullcontext()
@@ -54,13 +38,10 @@ def main() -> None:
         category_mappings = {}
 
         if not args.force_preprocess and processed_exists(cfg):
-            print("Loading cached features...")
+            print("Loading cached train/validation/test features...")
             X_train, y_train = load_processed(proc / "features_train.pkl")
             X_val, y_val = load_processed(proc / "features_val.pkl")
-
-            # The cached matrix is safe to reuse, but online inference still needs
-            # the category vocabulary that produced the original numeric codes.
-            print("Loading raw data to recover categorical mappings for serving...")
+            X_test, y_test = load_processed(proc / "features_test.pkl")
             raw_for_metadata = load_raw(cfg)
             category_mappings = fit_category_mappings(raw_for_metadata)
             print(f"  Recovered mappings for {len(category_mappings)} categorical columns.")
@@ -78,30 +59,33 @@ def main() -> None:
             df_feat = build_features(df, cfg, category_mappings=category_mappings)
             print(f"  Feature matrix: {df_feat.shape}")
 
-            X_train, X_val, y_train, y_val = train_val_split(df_feat, cfg)
-            print(f"  Train: {len(X_train):,}  |  Val: {len(X_val):,}")
+            X_train, X_val, X_test, y_train, y_val, y_test = train_val_test_split(df_feat, cfg)
+            print(
+                f"  Train: {len(X_train):,} | Val: {len(X_val):,} | "
+                f"Test: {len(X_test):,}"
+            )
 
             save_processed((X_train, y_train), proc / "features_train.pkl")
             save_processed((X_val, y_val), proc / "features_val.pkl")
+            save_processed((X_test, y_test), proc / "features_test.pkl")
             print("  Cached processed features.")
 
         if not args.skip_smote:
-            print("Applying SMOTE...")
+            print("Applying SMOTE to training data only...")
             X_train, y_train = apply_smote(X_train, y_train, cfg)
 
         print("\nTraining ensemble...")
         trainer = Trainer(cfg)
         trainer.set_category_mappings(category_mappings)
-        report = trainer.run(X_train, y_train, X_val, y_val)
+        report = trainer.run(X_train, y_train, X_val, y_val, X_test, y_test)
 
         ckpt_dir = Path("models/checkpoints")
         trainer.save(ckpt_dir, report)
 
-        # Persist best threshold back to config
         cfg["ensemble"]["default_threshold"] = report["best_threshold"]
         with open(args.config, "w") as f:
             yaml.dump(cfg, f, default_flow_style=False)
-        print(f"\nBest threshold ({report['best_threshold']:.3f}) written to {args.config}")
+        print(f"\nValidation-selected threshold ({report['best_threshold']:.3f}) written to {args.config}")
 
         if mlflow_enabled and log_training_run is not None:
             log_training_run(cfg, report, ckpt_dir)
