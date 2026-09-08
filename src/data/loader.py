@@ -19,14 +19,33 @@ def _require_files(raw_dir: Path, filenames: list[str]) -> None:
         )
 
 
+def _read_csv_memory_efficient(path: Path) -> pd.DataFrame:
+    """Read the wide IEEE-CIS CSV without materializing large object columns."""
+    sample = pd.read_csv(path, nrows=1000)
+    categorical_cols = sample.select_dtypes(include=["object", "string"]).columns.tolist()
+    dtype = {col: "category" for col in categorical_cols}
+    df = pd.read_csv(path, dtype=dtype, low_memory=False)
+
+    # Downcast numeric columns after parsing to reduce peak memory in feature engineering.
+    for col in df.select_dtypes(include=["integer"]).columns:
+        df[col] = pd.to_numeric(df[col], downcast="integer")
+    for col in df.select_dtypes(include=["floating"]).columns:
+        df[col] = pd.to_numeric(df[col], downcast="float")
+    return df
+
+
+def _load_and_merge(raw_dir: Path, txn_name: str, identity_name: str) -> pd.DataFrame:
+    txn = _read_csv_memory_efficient(raw_dir / txn_name)
+    identity = _read_csv_memory_efficient(raw_dir / identity_name)
+    return txn.merge(identity, on="TransactionID", how="left")
+
+
 def load_raw(cfg: dict) -> pd.DataFrame:
     raw_dir = Path(cfg["data"]["raw_dir"])
     txn_name = cfg["data"].get("train_file", "train_transaction.csv")
     identity_name = cfg["data"].get("train_identity_file", "train_identity.csv")
     _require_files(raw_dir, [txn_name, identity_name])
-    return pd.read_csv(raw_dir / txn_name).merge(
-        pd.read_csv(raw_dir / identity_name), on="TransactionID", how="left"
-    )
+    return _load_and_merge(raw_dir, txn_name, identity_name)
 
 
 def load_test_raw(cfg: dict) -> pd.DataFrame:
@@ -34,9 +53,7 @@ def load_test_raw(cfg: dict) -> pd.DataFrame:
     txn_name = cfg["data"].get("test_file", "test_transaction.csv")
     identity_name = cfg["data"].get("test_identity_file", "test_identity.csv")
     _require_files(raw_dir, [txn_name, identity_name])
-    return pd.read_csv(raw_dir / txn_name).merge(
-        pd.read_csv(raw_dir / identity_name), on="TransactionID", how="left"
-    )
+    return _load_and_merge(raw_dir, txn_name, identity_name)
 
 
 def train_val_split(df: pd.DataFrame, cfg: dict):
