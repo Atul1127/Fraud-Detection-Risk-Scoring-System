@@ -4,12 +4,17 @@ data:
   random_state: 42
   raw_dir: data/raw
   test_file: test_transaction.csv
-  test_size: 0.2
+  test_size: 0.15
+  validation_size: 0.15
   train_file: train_transaction.csv
 ensemble:
-  default_threshold: 0.42570148755502263
+  default_threshold: 0.5
 evaluation:
   optimize_threshold: true
+  threshold_strategy: cost
+  costs:
+    false_positive: 1.0
+    false_negative: 10.0
   primary_metric: pr_auc
   secondary_metrics:
   - roc_auc
