@@ -3,8 +3,6 @@ services:
     image: mongo:8
     container_name: fraudx-mongodb
     restart: unless-stopped
-    ports:
-      - "27017:27017"
     volumes:
       - fraudx-mongo-data:/data/db
     healthcheck:
