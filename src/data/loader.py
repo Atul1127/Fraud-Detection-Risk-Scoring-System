@@ -104,5 +104,5 @@ def load_processed(path: str | Path) -> object:
 def processed_exists(cfg: dict) -> bool:
     proc = Path(cfg["data"]["processed_dir"])
     return all((proc / name).exists() for name in (
-        "features_train.pkl", "features_val.pkl", "features_test.pkl"
+        "features_train.pkl", "features_val.pkl", "features_test.pkl", "feature_metadata.pkl"
     ))
