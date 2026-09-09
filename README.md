@@ -18,8 +18,8 @@ FraudX is a production-style fraud detection platform built on the IEEE-CIS Frau
 
 - **590,540 transactions** processed from the IEEE-CIS dataset.
 - **Strict chronological 70/15/15 train/validation/test evaluation** with the final test period kept untouched.
-- **Validation-selected cost threshold:** `0.347`, using configurable false-positive and false-negative costs of `1:10`.
-- **Final untouched-test ensemble:** **ROC-AUC 0.8480**, **PR-AUC 0.4283**, **F1 0.3792**.
+- **Validation-selected cost threshold:** `0.420`, using configurable false-positive and false-negative costs of `1:10`.
+- **Final untouched-test ensemble:** **ROC-AUC 0.8394**, **PR-AUC 0.4234**, **Precision 0.2601**, **Recall 0.5813**, **F1 0.3594**.
 - **20 automated tests passing** in the verified local suite.
 - XGBoost + LightGBM + CatBoost weighted ensemble with **35/35/30** weights.
 - Training-only SMOTE; validation and final test data remain untouched.
@@ -140,14 +140,14 @@ The validation-selected threshold is frozen before the final test is evaluated.
 
 | Metric | Final test |
 |---|---:|
-| ROC-AUC | **0.8480** |
-| PR-AUC | **0.4283** |
-| Precision | — |
-| Recall | — |
-| **F1** | **0.3792** |
-| Frozen threshold | **0.347** |
+| ROC-AUC | **0.8394** |
+| PR-AUC | **0.4234** |
+| Precision | **0.2601** |
+| Recall | **0.5813** |
+| **F1** | **0.3594** |
+| Frozen threshold | **0.420** |
 
-Only ROC-AUC, PR-AUC and F1 are reported here because these are the verified final benchmark values. No test-time threshold optimization is performed.
+No test-time threshold optimization is performed.
 
 ### Threshold objective
 
@@ -217,10 +217,10 @@ FraudX generates transaction-level signals including:
 - Card/hour historical activity.
 - Email-domain mismatch signals.
 - M1–M9 match indicators.
-- Selected Vesta features based on missingness.
-- Missing-value-aware categorical encoding.
+- Selected Vesta features based on training-set missingness.
+- Missing-value-aware categorical encoding using training-fitted category mappings.
 
-Time-dependent count and velocity features are calculated in transaction order and use historical context rather than future rows, reducing temporal leakage risk.
+Time-dependent count and velocity features are calculated in transaction order and use **prior transactions only**, reducing temporal leakage risk. Preprocessing choices that learn from data are fitted on the training split and then applied to validation/test.
 
 ## Imbalanced Learning
 
