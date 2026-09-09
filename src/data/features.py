@@ -101,7 +101,8 @@ def encode_match_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     match_cols = [c for c in df.columns if c.startswith("M") and c[1:].isdigit()]
     for col in match_cols:
-        df[col] = df[col].map({"T": 1, "F": 0}).fillna(-1).astype(int)
+        values = df[col].astype("string")
+        df[col] = values.map({"T": 1, "F": 0}).fillna(-1).astype(int)
     return df
 
 
