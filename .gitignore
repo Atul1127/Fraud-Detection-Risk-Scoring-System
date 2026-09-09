@@ -11,6 +11,12 @@ models/stacking/
 catboost_info/
 mlruns/
 *.log
+*.db
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
