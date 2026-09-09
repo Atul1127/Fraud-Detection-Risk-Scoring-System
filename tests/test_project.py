@@ -33,9 +33,9 @@ def test_required_project_files_exist():
         assert (ROOT / relative_path).is_file(), relative_path
 
 
-def test_compose_exposes_fraudx_api_on_8001():
+def test_compose_exposes_fraudx_api_and_mlflow():
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
     assert '"8001:8000"' in compose
-    assert '"27017:27017"' in compose
     assert '"5000:5000"' in compose
+    assert '"27017:27017"' not in compose
