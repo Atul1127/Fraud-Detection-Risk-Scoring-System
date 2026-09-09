@@ -18,12 +18,9 @@ class FraudEnsemble:
         self.cfg = cfg
         self.feature_names: list[str] | None = None
         self.category_mappings: dict[str, list] = {}
+        self.selected_v_columns: list[str] = []
 
-        tuned_path = Path(
-            cfg.get("optuna", {}).get(
-                "best_params_path", "models/optuna/best_params.json"
-            )
-        )
+        tuned_path = Path(cfg.get("optuna", {}).get("best_params_path", "models/optuna/best_params.json"))
         tuned = {}
         if tuned_path.exists():
             with tuned_path.open() as f:
@@ -35,37 +32,23 @@ class FraudEnsemble:
         lgb_cfg = models_cfg.get("lightgbm", {})
         cat_cfg = models_cfg.get("catboost", {})
 
-        xgb_params = {
-            key: value
-            for key, value in xgb_cfg.items()
-            if key not in {"enabled", "random_state"}
-        }
+        xgb_params = {key: value for key, value in xgb_cfg.items() if key not in {"enabled", "random_state"}}
         xgb_params.update(tuned.get("XGBoost", {}).get("params", {}))
         xgb_params.setdefault("eval_metric", xgb_cfg.get("eval_metric", "aucpr"))
         xgb_params.setdefault("tree_method", xgb_cfg.get("tree_method", "hist"))
         xgb_params.setdefault("random_state", seed)
         self.xgb_model = XGBClassifier(**xgb_params)
 
-        lgb_params = {
-            key: value
-            for key, value in lgb_cfg.items()
-            if key not in {"enabled", "random_state"}
-        }
+        lgb_params = {key: value for key, value in lgb_cfg.items() if key not in {"enabled", "random_state"}}
         lgb_params.update(tuned.get("LightGBM", {}).get("params", {}))
         lgb_params.setdefault("is_unbalance", lgb_cfg.get("is_unbalance", True))
         lgb_params.setdefault("random_state", seed)
         lgb_params.setdefault("verbose", -1)
         self.lgb_model = LGBMClassifier(**lgb_params)
 
-        cat_params = {
-            key: value
-            for key, value in cat_cfg.items()
-            if key not in {"enabled", "random_seed"}
-        }
+        cat_params = {key: value for key, value in cat_cfg.items() if key not in {"enabled", "random_seed"}}
         cat_params.update(tuned.get("CatBoost", {}).get("params", {}))
-        cat_params.setdefault(
-            "auto_class_weights", cat_cfg.get("auto_class_weights", "Balanced")
-        )
+        cat_params.setdefault("auto_class_weights", cat_cfg.get("auto_class_weights", "Balanced"))
         cat_params.setdefault("loss_function", "Logloss")
         cat_params.setdefault("eval_metric", cat_cfg.get("eval_metric", "AUC"))
         cat_params.setdefault("random_seed", seed)
@@ -85,9 +68,7 @@ class FraudEnsemble:
             "LightGBM": self.lgb_model.predict_proba(X)[:, 1],
             "CatBoost": self.cat_model.predict_proba(X)[:, 1],
         }
-        probabilities["Ensemble"] = sum(
-            self.WEIGHTS[name] * probabilities[name] for name in self.WEIGHTS
-        )
+        probabilities["Ensemble"] = sum(self.WEIGHTS[name] * probabilities[name] for name in self.WEIGHTS)
         return probabilities
 
     def predict_proba(self, X):
@@ -101,7 +82,10 @@ class FraudEnsemble:
         joblib.dump(self.cat_model, checkpoint_dir / "cat_model.joblib")
         joblib.dump(self.feature_names, checkpoint_dir / "feature_names.joblib")
         joblib.dump(
-            {"category_mappings": self.category_mappings},
+            {
+                "category_mappings": self.category_mappings,
+                "selected_v_columns": self.selected_v_columns,
+            },
             checkpoint_dir / "feature_metadata.joblib",
         )
 
@@ -116,8 +100,16 @@ class FraudEnsemble:
         if metadata_path.exists():
             metadata = joblib.load(metadata_path)
             model.category_mappings = metadata.get("category_mappings", {})
+            model.selected_v_columns = metadata.get("selected_v_columns", [])
         else:
             model.category_mappings = {}
+            model.selected_v_columns = []
+
+        # Older checkpoints did not persist V-feature selection separately.
+        # Recover it exactly from the trained feature list so they remain serveable.
+        if not model.selected_v_columns and model.feature_names:
+            model.selected_v_columns = [name for name in model.feature_names if name.startswith("V")]
+
         model.xgb_model = joblib.load(checkpoint_dir / "xgb_model.joblib")
         model.lgb_model = joblib.load(checkpoint_dir / "lgb_model.joblib")
         model.cat_model = joblib.load(checkpoint_dir / "cat_model.joblib")

@@ -52,6 +52,7 @@ class OnlineFeatureStore:
             frame,
             self.cfg,
             category_mappings=model.category_mappings,
+            selected_v_columns=model.selected_v_columns,
         )
 
         if "__fraudx_current" not in features.columns:

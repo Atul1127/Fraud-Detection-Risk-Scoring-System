@@ -27,7 +27,7 @@ def add_email_mismatch(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_velocity_features(df: pd.DataFrame, time_windows: list[int]) -> pd.DataFrame:
-    """Add causal card-level amount statistics using current/prior transactions."""
+    """Add causal card-level amount statistics using prior transactions only."""
     df = df.copy().sort_values("TransactionDT").reset_index(drop=True)
     if "card1" not in df or "TransactionAmt" not in df:
         return df
@@ -47,8 +47,8 @@ def add_velocity_features(df: pd.DataFrame, time_windows: list[int]) -> pd.DataF
             dt = group["TransactionDT"].to_numpy()
             amt = group["TransactionAmt"].to_numpy()
             for i, t in enumerate(dt):
-                mask = (dt[: i + 1] <= t) & (dt[: i + 1] > t - window)
-                window_amt = amt[: i + 1][mask]
+                mask = (dt[:i] <= t) & (dt[:i] > t - window)
+                window_amt = amt[:i][mask]
                 result[positions[i], 0] = len(window_amt)
                 result[positions[i], 1] = window_amt.sum()
                 result[positions[i], 2] = window_amt.mean() if len(window_amt) else 0.0
@@ -101,17 +101,22 @@ def encode_match_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     match_cols = [c for c in df.columns if c.startswith("M") and c[1:].isdigit()]
     for col in match_cols:
-        df[col] = df[col].map({"T": 1, "F": 0}).fillna(-1).astype(int)
+        values = df[col].astype("string")
+        df[col] = values.map({"T": 1, "F": 0}).fillna(-1).astype(int)
     return df
 
 
-def select_v_features(df: pd.DataFrame, keep: int = 50) -> pd.DataFrame:
-    """Keep the most populated Vesta features."""
+def select_v_features(
+    df: pd.DataFrame, keep: int = 50, selected_columns: list[str] | None = None
+) -> pd.DataFrame:
+    """Keep Vesta features selected from training data when columns are provided."""
     v_cols = [c for c in df.columns if c.startswith("V")]
     if not v_cols:
         return df
-    selected = df[v_cols].isnull().mean().nsmallest(keep).index
-    return df.drop(columns=[c for c in v_cols if c not in selected])
+    if selected_columns is None:
+        selected_columns = df[v_cols].isnull().mean().nsmallest(keep).index.tolist()
+    selected_set = set(selected_columns)
+    return df.drop(columns=[c for c in v_cols if c not in selected_set])
 
 
 def drop_id_cols(df: pd.DataFrame) -> pd.DataFrame:
@@ -147,6 +152,8 @@ def build_features(
     df: pd.DataFrame,
     cfg: dict,
     category_mappings: dict[str, list] | None = None,
+    selected_v_columns: list[str] | None = None,
+    select_v: bool = True,
 ) -> pd.DataFrame:
     """Build deterministic, time-ordered features without future-row counts."""
     df = df.copy().sort_values("TransactionDT").reset_index(drop=True)
@@ -169,7 +176,8 @@ def build_features(
 
     df = add_combination_feature(df)
     df = encode_match_features(df)
-    df = select_v_features(df, keep=50)
+    if select_v:
+        df = select_v_features(df, keep=50, selected_columns=selected_v_columns)
     df = drop_id_cols(df)
     return encode_categoricals(df, category_mappings=category_mappings)
 

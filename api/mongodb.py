@@ -77,21 +77,25 @@ class MongoStore:
         frequency_columns: list[str],
         max_window: int,
     ) -> list[dict[str, Any]]:
+        """Return all earlier matching transactions needed for causal online features.
+
+        ``max_window`` is retained for the caller contract, but history is not truncated
+        here because cumulative frequency and time-since-last-transaction features need
+        older matching records. Velocity features apply their own time windows later.
+        """
+        del max_window
         collection = self._collection("transactions")
         transaction_dt = transaction.get("TransactionDT")
         if transaction_dt is None:
             raise ValueError("TransactionDT is required for online feature construction")
+
         clauses: list[dict[str, Any]] = []
         for field in frequency_columns:
             value = transaction.get(field)
             if value is not None:
                 clauses.append({f"data.{field}": value})
-        time_filter = {
-            "data.TransactionDT": {
-                "$lt": transaction_dt,
-                "$gte": max(0, transaction_dt - max_window),
-            }
-        }
+
+        time_filter = {"data.TransactionDT": {"$lt": transaction_dt}}
         query: dict[str, Any] = {"$and": [time_filter, {"$or": clauses}]} if clauses else time_filter
         documents = collection.find(query, {"_id": 0, "data": 1}).sort("data.TransactionDT", 1)
         return [doc["data"] for doc in documents]

@@ -26,12 +26,7 @@ def _flatten_params(value: Any, prefix: str = "") -> dict[str, str]:
 
 
 def start_run(cfg: dict) -> Any:
-    """Start an MLflow run using a database-backed local tracking store.
-
-    MLflow versions that no longer support the legacy file-store backend can
-    use SQLite for local development while keeping artifacts on the local
-    filesystem.
-    """
+    """Start an MLflow run using a database-backed local tracking store."""
     mlflow_cfg = cfg.get("mlflow", {})
     tracking_uri = mlflow_cfg.get("tracking_uri", DEFAULT_TRACKING_URI)
     experiment_name = mlflow_cfg.get("experiment_name", EXPERIMENT_NAME)
@@ -41,33 +36,27 @@ def start_run(cfg: dict) -> Any:
 
 
 def log_training_run(cfg: dict, report: dict, checkpoint_dir: str | Path) -> None:
-    """Log FraudX training configuration, metrics and model artifacts."""
+    """Log training configuration, validation/test metrics and artifacts."""
     checkpoint_dir = Path(checkpoint_dir)
     params = _flatten_params(cfg)
 
-    # MLflow parameter values have size limits; keep the run useful by logging
-    # the complete config as an artifact as well.
     for key, value in params.items():
         if len(value) <= 500:
             mlflow.log_param(key[:250], value)
 
-    metric_keys = {
-        "auc_roc",
-        "auc_pr",
-        "precision",
-        "recall",
-        "f1",
-        "best_threshold",
-    }
-    for key in metric_keys:
+    for key in ("auc_roc", "auc_pr", "precision", "recall", "f1", "best_threshold"):
         value = report.get(key)
         if value is not None:
-            mlflow.log_metric(key, float(value))
+            mlflow.log_metric(f"validation_{key}", float(value))
+
+    for key, value in report.get("test_metrics", {}).items():
+        if isinstance(value, (int, float)):
+            mlflow.log_metric(f"test_{key}", float(value))
 
     for model_name, metrics in report.get("model_comparison", {}).items():
         for metric_name, value in metrics.items():
             if isinstance(value, (int, float)):
-                mlflow.log_metric(f"{model_name}_{metric_name}", float(value))
+                mlflow.log_metric(f"validation_{model_name}_{metric_name}", float(value))
 
     config_path = checkpoint_dir / "mlflow_config.json"
     config_path.write_text(json.dumps(cfg, indent=2, default=str), encoding="utf-8")
@@ -82,5 +71,8 @@ def log_training_run(cfg: dict, report: dict, checkpoint_dir: str | Path) -> Non
             "model_type": "weighted_ensemble",
             "models": "XGBoost,LightGBM,CatBoost",
             "serving": "FastAPI+MongoDB",
+            "evaluation": "chronological_train_validation_test",
+            "threshold_selection": "validation_cost_minimization",
+            "test_set": "untouched_frozen_threshold",
         }
     )
