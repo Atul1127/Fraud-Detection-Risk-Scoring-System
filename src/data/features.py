@@ -47,7 +47,6 @@ def add_velocity_features(df: pd.DataFrame, time_windows: list[int]) -> pd.DataF
             dt = group["TransactionDT"].to_numpy()
             amt = group["TransactionAmt"].to_numpy()
             for i, t in enumerate(dt):
-                # Exclude the current transaction so these remain strictly historical.
                 mask = (dt[:i] <= t) & (dt[:i] > t - window)
                 window_amt = amt[:i][mask]
                 result[positions[i], 0] = len(window_amt)
@@ -154,6 +153,7 @@ def build_features(
     cfg: dict,
     category_mappings: dict[str, list] | None = None,
     selected_v_columns: list[str] | None = None,
+    select_v: bool = True,
 ) -> pd.DataFrame:
     """Build deterministic, time-ordered features without future-row counts."""
     df = df.copy().sort_values("TransactionDT").reset_index(drop=True)
@@ -176,7 +176,8 @@ def build_features(
 
     df = add_combination_feature(df)
     df = encode_match_features(df)
-    df = select_v_features(df, keep=50, selected_columns=selected_v_columns)
+    if select_v:
+        df = select_v_features(df, keep=50, selected_columns=selected_v_columns)
     df = drop_id_cols(df)
     return encode_categoricals(df, category_mappings=category_mappings)
 
