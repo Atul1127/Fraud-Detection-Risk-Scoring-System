@@ -98,11 +98,6 @@ def save_processed(obj: object, path: str | Path) -> None:
 
 def load_processed(path: str | Path) -> object:
     with open(path, "rb") as f:
-        pickle.dump(obj, f)
-
-
-def load_processed(path: str | Path) -> object:
-    with open(path, "rb") as f:
         return pickle.load(f)
 
 
