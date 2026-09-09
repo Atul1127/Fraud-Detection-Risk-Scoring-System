@@ -1,6 +1,6 @@
 # Fraud Detection & Risk Scoring System
 
-> **End-to-end, time-aware fraud detection with ensemble ML, online historical features, explainability, experiment tracking, API serving, monitoring, Docker, and CI/CD.**
+> **End-to-end, time-aware fraud detection with ensemble ML, cost-sensitive decisioning, online historical features, explainability, experiment tracking, API serving, monitoring, Docker, and CI/CD.**
 
 [![CI](https://github.com/Atul1127/Fraud-Detection-Risk-Scoring-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Atul1127/Fraud-Detection-Risk-Scoring-System/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
@@ -10,21 +10,25 @@
 ![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF?logo=githubactions&logoColor=white)
 
-FraudX is a production-style fraud detection platform built on the IEEE-CIS Fraud Detection dataset. It combines **chronological validation, leakage-conscious feature engineering, imbalanced learning, XGBoost/LightGBM/CatBoost ensembles, Optuna tuning, threshold optimization, SHAP explainability, MongoDB-backed historical features, FastAPI inference, MLflow tracking, prediction/feature drift monitoring, Docker Compose, and GitHub Actions CI/CD**.
+FraudX is a production-style fraud detection platform built on the IEEE-CIS Fraud Detection dataset. It combines chronological evaluation, causal historical/velocity features, imbalanced learning, XGBoost/LightGBM/CatBoost ensembles, Optuna tuning, validation-only cost-sensitive threshold selection, SHAP explainability, MongoDB-backed online historical features, FastAPI inference, MLflow tracking, PSI monitoring, Docker Compose, and GitHub Actions CI/CD.
 
 ---
 
 ## Recruiter Snapshot
 
-- **590,540 transactions** processed with chronological train/validation evaluation.
-- **0.8921 ROC-AUC**, **0.4857 PR-AUC**, and **0.5081 F1** from the final tuned weighted ensemble.
-- Ensemble F1 improved by approximately **8.5%** after Optuna tuning (**0.4681 → 0.5081**).
-- A separate chronological stacking experiment reached **0.9177 ROC-AUC / 0.5445 PR-AUC**.
-- **18 automated tests passing** in the verified local suite.
-- Real-time inference through **FastAPI** with MongoDB-backed historical features and prediction persistence.
-- **MLflow** tracks model parameters, metrics, reports, and artifacts.
-- **PSI-based monitoring** detects prediction-score and online numeric-feature distribution shifts.
-- Complete local stack containerized with **Docker Compose** and validated through **GitHub Actions**.
+- **590,540 transactions** processed from the IEEE-CIS dataset.
+- **Strict chronological 70/15/15 train/validation/test evaluation** with the final test period kept untouched.
+- **Validation-selected cost threshold:** `0.347`, using configurable false-positive and false-negative costs of `1:10`.
+- **Final untouched-test ensemble:** **ROC-AUC 0.8480**, **PR-AUC 0.4283**, **F1 0.3792**.
+- **20 automated tests passing** in the verified local suite.
+- XGBoost + LightGBM + CatBoost weighted ensemble with **35/35/30** weights.
+- Training-only SMOTE; validation and final test data remain untouched.
+- Real-time inference through FastAPI with MongoDB-backed historical features and prediction persistence.
+- MLflow tracks configuration, validation metrics, final test metrics, thresholding and model artifacts.
+- PSI-based monitoring covers prediction-score and online numeric-feature drift.
+- Docker Compose and GitHub Actions provide reproducible local deployment and CI validation.
+
+> **Evaluation note:** The final test metrics are the primary reported benchmark. The threshold is selected on validation data and then frozen before test evaluation, avoiding test-set threshold optimization.
 
 ---
 
@@ -49,32 +53,38 @@ FraudX is a production-style fraud detection platform built on the IEEE-CIS Frau
           │                                 │
           ▼                                 │
  Chronological Split                       │
-          │                                 │
-          ▼                                 │
- Training-only SMOTE                       │
-          │                                 │
     ┌─────┼─────┐                           │
     ▼     ▼     ▼                           │
-   XGB   LGBM  CatBoost                     │
-    └─────┼─────┘                           │
-          ▼                                 │
-  Weighted Ensemble ◄───────────────────────┘
-          │
-          ▼
- Threshold Optimization
-          │
-          ▼
- Fraud Probability
-          │
-     ┌────┴────┐
-     ▼         ▼
-   SHAP     Persistence
-               │
-               ▼
-        Drift Monitoring
-               │
-               ▼
-      stable / warning / drift
+  Train   Val  Final Test                   │
+    │      │      │                          │
+    ▼      │      │                          │
+  SMOTE    │      │                          │
+    │      │      │                          │
+    └──────┼──────┘                          │
+           ▼                                 │
+   XGB + LightGBM + CatBoost                 │
+           │                                 │
+           ▼                                 │
+    Weighted Ensemble ◄──────────────────────┘
+           │
+           ▼
+ Validation Cost Optimization
+           │
+           ▼
+     Freeze Threshold
+           │
+           ▼
+  Untouched Final Test
+           │
+           ▼
+      Fraud Probability
+           │
+      ┌────┴────┐
+      ▼         ▼
+    SHAP     Persistence
+                │
+                ▼
+         Drift Monitoring
 
           ┌──────────────┐
           │    MLflow    │
@@ -100,10 +110,10 @@ Port `8001` is used intentionally so FraudX can coexist with applications using 
 | Capability | Implementation |
 |---|---|
 | Fraud classification | XGBoost + LightGBM + CatBoost |
-| Time-aware evaluation | Chronological train/validation split |
-| Imbalanced learning | SMOTE on training data + class balancing |
+| Time-aware evaluation | Strict chronological train/validation/test split |
+| Imbalanced learning | SMOTE on training data + model class balancing |
 | Hyperparameter optimization | Optuna, optimized for PR-AUC |
-| Decision optimization | Validation-based F1 threshold selection |
+| Decision optimization | Validation-only cost-sensitive threshold selection |
 | Explainable AI | SHAP |
 | Online historical features | MongoDB |
 | Model serving | FastAPI + Uvicorn |
@@ -116,44 +126,45 @@ Port `8001` is used intentionally so FraudX can coexist with applications using 
 
 ---
 
-# Model Performance
+# Model Evaluation
 
-## Final tuned temporal evaluation
+## Final untouched temporal test
 
-The primary benchmark uses chronological validation: earlier transactions are used for training and later transactions are held out for validation.
+The production benchmark uses three chronological periods:
 
-| Model | ROC-AUC | PR-AUC | F1 |
-|---|---:|---:|---:|
-| XGBoost | 0.8832 | 0.4551 | 0.4692 |
-| LightGBM | 0.8491 | 0.3748 | 0.3993 |
-| CatBoost | 0.8773 | 0.4624 | 0.4778 |
-| **Weighted Ensemble** | **0.8921** | **0.4857** | **0.5081** |
+- **70% training:** model fitting and SMOTE.
+- **15% validation:** model evaluation and threshold selection.
+- **15% final test:** completely untouched during training and threshold selection.
 
-**Best ensemble threshold:** `0.426`  
-**Precision:** `0.5725` · **Recall:** `0.4567` · **F1:** `0.5081`
+The validation-selected threshold is frozen before the final test is evaluated.
 
-SMOTE is applied only to the training split; the chronological validation period remains untouched.
-
-## Optuna improvement
-
-| Metric | Before tuning | After tuning |
-|---|---:|---:|
-| ROC-AUC | 0.8888 | **0.8921** |
-| PR-AUC | 0.4726 | **0.4857** |
-| F1 | 0.4681 | **0.5081** |
-
-## Separate stacking experiment
-
-A chronological stacking experiment is retained separately from the default production path.
-
-| Metric | Stacking |
+| Metric | Final test |
 |---|---:|
-| ROC-AUC | **0.9177** |
-| PR-AUC | **0.5445** |
-| F1 | 0.4875 |
-| Threshold | 0.810 |
+| ROC-AUC | **0.8480** |
+| PR-AUC | **0.4283** |
+| Precision | — |
+| Recall | — |
+| **F1** | **0.3792** |
+| Frozen threshold | **0.347** |
 
-> Results can vary with library versions, cached artifacts, configuration, and feature changes. The weighted ensemble remains the default serving path.
+Only ROC-AUC, PR-AUC and F1 are reported here because these are the verified final benchmark values. No test-time threshold optimization is performed.
+
+### Threshold objective
+
+The default decision policy is cost-sensitive:
+
+```text
+False positive cost = 1
+False negative cost = 10
+```
+
+The threshold minimizing classification cost is selected **on validation data only**. This reflects a fraud setting where missed fraud can be materially more expensive than an unnecessary alert/review.
+
+### Historical validation benchmark
+
+An earlier validation-only run produced a weighted-ensemble ROC-AUC of `0.8921`, PR-AUC of `0.4857`, and F1 of `0.5081`. Those numbers are retained as historical context, **not as the final generalization benchmark**, because the validation threshold was optimized on that same validation period.
+
+> Results can vary with library versions, cached artifacts, configuration and feature changes. The final untouched-test benchmark is the primary result.
 
 ---
 
@@ -168,37 +179,30 @@ IEEE-CIS Transactions + Identity
               ▼
    Time-Ordered Feature Engineering
               │
-      ┌───────┼─────────┐
-      ▼       ▼         ▼
-    Time    History   Velocity
-   Amount   Frequency  Signals
-      └───────┼─────────┘
               ▼
-    Chronological Split
-              │
-              ├──────────────► Validation (untouched)
-              │
-              ▼
-       Training Data
-              │
-              ▼
-             SMOTE
-              │
+     Chronological 70/15/15 Split
        ┌──────┼──────┐
        ▼      ▼      ▼
-     XGB    LGBM   CatBoost
+     Train    Val   Test
+       │      │      │
+       ▼      │      │
+     SMOTE    │      │
+       │      │      │
        └──────┼──────┘
               ▼
-      Weighted Probability
+       XGB / LGBM / CatBoost
               │
               ▼
-       Threshold Search
+       Weighted Probability
               │
               ▼
-      Fraud / Not Fraud
+  Cost Threshold on Validation
               │
               ▼
-        SHAP Explanation
+       Freeze Threshold
+              │
+              ▼
+     Final Test Evaluation
 ```
 
 ## Feature Engineering
@@ -216,11 +220,11 @@ FraudX generates transaction-level signals including:
 - Selected Vesta features based on missingness.
 - Missing-value-aware categorical encoding.
 
-Time-dependent count features are calculated in transaction order and do not use future rows, reducing temporal leakage risk.
+Time-dependent count and velocity features are calculated in transaction order and use historical context rather than future rows, reducing temporal leakage risk.
 
 ## Imbalanced Learning
 
-FraudX applies **SMOTE only to the training split**, while validation remains untouched. The boosting models also use class-balancing mechanisms.
+FraudX applies **SMOTE only to the training split**. Validation and final test distributions are left untouched. The boosting models also use configured class-balancing mechanisms.
 
 ## Ensemble
 
@@ -230,7 +234,7 @@ LightGBM ── 35% ──┼──► Fraud Probability
 CatBoost ── 30% ──┘
 ```
 
-Optuna optimizes PR-AUC and the decision threshold is selected on validation data.
+Optuna optimizes PR-AUC. The decision threshold is selected separately on validation data using the configured cost function.
 
 ---
 
@@ -303,18 +307,7 @@ After starting Docker Compose:
 }
 ```
 
-Example response from the verified local deployment:
-
-```json
-{
-  "transaction_id": "TX_TEST_001",
-  "fraud_probability": 0.31567527345000485,
-  "prediction": 0,
-  "threshold": 0.42570148755502263,
-  "model_version": "local-checkpoint",
-  "persisted": true
-}
-```
+The API uses the persisted production threshold from `config.yaml` for classification.
 
 ---
 
@@ -328,13 +321,7 @@ FraudX includes a lightweight production-style monitoring layer based on **Popul
 GET /monitoring/predictions?window_hours=24
 ```
 
-Tracks:
-
-- Prediction volume.
-- Fraud prediction rate.
-- Average fraud probability.
-- Current vs previous prediction-score distribution.
-- PSI drift level.
+Tracks prediction volume, fraud prediction rate, average fraud probability, score-distribution changes and PSI drift level.
 
 ### Feature monitoring
 
@@ -366,25 +353,13 @@ FraudX tracks training runs with MLflow.
 
 Tracked information includes:
 
-- Model parameters.
-- ROC-AUC, PR-AUC, precision, recall and F1.
-- Optimized threshold.
-- Training reports.
-- Model checkpoint artifacts.
-- Feature metadata.
+- Training configuration and model parameters.
+- Validation ROC-AUC, PR-AUC, precision, recall and F1.
+- Validation-selected threshold and threshold objective.
+- Final untouched-test ROC-AUC, PR-AUC, precision, recall and F1.
+- Training reports and model artifacts.
 
-The verified run produced:
-
-```text
-ROC-AUC        0.8921
-PR-AUC         0.4857
-Precision      0.5725
-Recall         0.4567
-F1             0.5081
-Threshold      0.4257
-```
-
-MLflow is containerized locally with a pinned `mlflow==3.15.1` image build and SQLite-backed tracking metadata.
+Validation and final test metrics are logged with separate `validation_*` and `test_*` metric names so the final benchmark cannot be confused with threshold-tuning metrics.
 
 Open the local UI at:
 
@@ -406,8 +381,6 @@ FraudX runs as three local services:
 │  └────────────┘  └────────────┘  └────────┘│
 └─────────────────────────────────────────────┘
 ```
-
-The API image includes the Linux OpenMP runtime required by LightGBM/XGBoost. MLflow is built locally from `Dockerfile.mlflow`, avoiding a runtime dependency on an external MLflow container registry.
 
 ### Start
 
@@ -475,17 +448,18 @@ The workflow also uses GitHub Actions cache for Docker builds.
 
 The automated suite covers:
 
-- Temporal ordering and train/validation separation.
+- Strict chronological train/validation/test boundaries.
 - Historical frequency and transaction-time feature behavior.
 - Numeric feature output after preprocessing.
 - Evaluation metrics and threshold contracts.
+- Cost-sensitive threshold selection.
 - Ensemble probability shape and bounds.
 - API/project configuration.
 - MongoDB/online feature behavior.
 - Drift/PSI calculations.
 - Docker Compose configuration.
 
-**Verified local result: `18 passed`.**
+**Verified local result: `20 passed`.**
 
 Run locally:
 
@@ -515,4 +489,3 @@ Run the interactive analysis dashboard with:
 ```bash
 streamlit run app/streamlit_app.py
 ```
-
