@@ -52,7 +52,7 @@ def load_raw(cfg: dict) -> pd.DataFrame:
 def load_test_raw(cfg: dict) -> pd.DataFrame:
     raw_dir = Path(cfg["data"]["raw_dir"])
     txn_name = cfg["data"].get("test_file", "test_transaction.csv")
-    identity_name = cfg["data"].get("train_identity_file", "train_identity.csv")
+    identity_name = cfg["data"].get("test_identity_file", "test_identity.csv")
     _require_files(raw_dir, [txn_name, identity_name])
     return _load_and_merge(raw_dir, txn_name, identity_name)
 
