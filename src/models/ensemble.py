@@ -104,6 +104,12 @@ class FraudEnsemble:
         else:
             model.category_mappings = {}
             model.selected_v_columns = []
+
+        # Older checkpoints did not persist V-feature selection separately.
+        # Recover it exactly from the trained feature list so they remain serveable.
+        if not model.selected_v_columns and model.feature_names:
+            model.selected_v_columns = [name for name in model.feature_names if name.startswith("V")]
+
         model.xgb_model = joblib.load(checkpoint_dir / "xgb_model.joblib")
         model.lgb_model = joblib.load(checkpoint_dir / "lgb_model.joblib")
         model.cat_model = joblib.load(checkpoint_dir / "cat_model.joblib")
