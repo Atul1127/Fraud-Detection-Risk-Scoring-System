@@ -60,7 +60,7 @@ def main() -> None:
             print(f"  Fraud rate: {df[target].mean():.4f}")
 
             print("Engineering causal features...")
-            # Build time-dependent features on the complete chronological stream so
+            # History-dependent features are built on the full chronological stream so
             # validation/test rows can use legitimate history from earlier rows.
             # Encoding and Vesta feature selection are fitted only on train below.
             df_feat = build_features(df, cfg, select_v=False)
@@ -100,6 +100,7 @@ def main() -> None:
         print("\nTraining ensemble...")
         trainer = Trainer(cfg)
         trainer.set_category_mappings(category_mappings)
+        trainer.model.selected_v_columns = selected_v_columns
         report = trainer.run(X_train, y_train, X_val, y_val, X_test, y_test)
 
         ckpt_dir = Path("models/checkpoints")
