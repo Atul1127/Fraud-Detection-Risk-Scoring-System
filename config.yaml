@@ -9,7 +9,7 @@ data:
   train_file: train_transaction.csv
 ensemble:
   default_threshold: 0.347
- evaluation:
+evaluation:
   optimize_threshold: true
   threshold_strategy: cost
   costs:
