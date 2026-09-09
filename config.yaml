@@ -8,7 +8,7 @@ data:
   validation_size: 0.15
   train_file: train_transaction.csv
 ensemble:
-  default_threshold: 0.347
+  default_threshold: 0.420
 evaluation:
   optimize_threshold: true
   threshold_strategy: cost
