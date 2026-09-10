@@ -28,6 +28,9 @@ def compute_metrics(y_true: np.ndarray, y_proba: np.ndarray, threshold: float = 
 def find_best_threshold(y_true: np.ndarray, y_proba: np.ndarray) -> tuple[float, float]:
     """Return threshold that maximises F1 on the provided tuning data."""
     precision, recall, thresholds = precision_recall_curve(y_true, y_proba)
+    if thresholds.size == 0:
+        return 0.5, 0.0
+
     f1_scores = np.where(
         (precision + recall) == 0,
         0.0,
