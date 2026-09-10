@@ -5,7 +5,6 @@ data/processed/
 # Generated model artifacts
 models/checkpoints/
 models/optuna/
-models/stacking/
 
 # Training/runtime artifacts
 catboost_info/
