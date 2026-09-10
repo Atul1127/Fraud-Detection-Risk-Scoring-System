@@ -262,14 +262,13 @@ A push to `main` publishes the API image to GHCR.
 ├── docs/                 # monitoring documentation
 ├── src/
 │   ├── data/             # loading and feature engineering
-│   ├── models/            # ensemble implementation
-│   ├── monitoring/        # PSI/drift monitoring
+│   ├── models/           # ensemble implementation
+│   ├── monitoring/       # PSI/drift monitoring
 │   ├── evaluate.py       # metrics and threshold selection
 │   ├── explain.py        # SHAP explanations
 │   ├── mlflow_tracker.py # experiment tracking
 │   ├── train.py          # training orchestration
-│   ├── tune.py           # Optuna tuning
-│   └── stacking.py       # separate stacking experiment
+│   └── tune.py           # Optuna tuning
 ├── tests/                # automated tests
 ├── config.yaml           # project configuration
 ├── Dockerfile
