@@ -103,7 +103,7 @@ def main() -> None:
         trainer.model.selected_v_columns = selected_v_columns
         report = trainer.run(X_train, y_train, X_val, y_val, X_test, y_test)
 
-        ckpt_dir = Path("models/checkpoints")
+        ckpt_dir = Path(cfg["data"].get("model_dir", "models")) / "checkpoints"
         trainer.save(ckpt_dir, report)
 
         cfg["ensemble"]["default_threshold"] = report["best_threshold"]
