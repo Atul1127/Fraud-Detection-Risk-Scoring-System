@@ -13,6 +13,11 @@ mlruns/
 *.log
 *.db
 
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
 # Local environment / secrets
 .env
 .env.*
