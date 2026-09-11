@@ -27,7 +27,7 @@ def add_email_mismatch(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_velocity_features(df: pd.DataFrame, time_windows: list[int]) -> pd.DataFrame:
-    """Add causal card-level amount statistics using prior transactions only."""
+    """Add causal card-level amount statistics using strictly earlier timestamps."""
     df = df.copy().sort_values("TransactionDT").reset_index(drop=True)
     if "card1" not in df or "TransactionAmt" not in df:
         return df
@@ -47,7 +47,7 @@ def add_velocity_features(df: pd.DataFrame, time_windows: list[int]) -> pd.DataF
             dt = group["TransactionDT"].to_numpy()
             amt = group["TransactionAmt"].to_numpy()
             for i, t in enumerate(dt):
-                mask = (dt[:i] <= t) & (dt[:i] > t - window)
+                mask = (dt[:i] < t) & (dt[:i] > t - window)
                 window_amt = amt[:i][mask]
                 result[positions[i], 0] = len(window_amt)
                 result[positions[i], 1] = window_amt.sum()
@@ -69,13 +69,22 @@ def add_time_since_last_txn(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _strict_historical_count(df: pd.DataFrame, group_cols: list[str]) -> pd.Series:
+    """Count rows in each group with TransactionDT strictly before the current row."""
+    return (
+        df.groupby(group_cols, sort=False)["TransactionDT"]
+        .transform(lambda s: s.rank(method="min", ascending=True) - 1)
+        .astype(float)
+    )
+
+
 def add_hourly_txn_count(df: pd.DataFrame) -> pd.DataFrame:
-    """Historical count for a card/hour combination; excludes the current row."""
+    """Historical count for a card/hour combination; excludes same-timestamp rows."""
     df = df.copy().sort_values("TransactionDT").reset_index(drop=True)
     if not {"card1", "hour"}.issubset(df.columns):
         df["card1_hour_count"] = 0
         return df
-    df["card1_hour_count"] = df.groupby(["card1", "hour"], sort=False).cumcount()
+    df["card1_hour_count"] = _strict_historical_count(df, ["card1", "hour"])
     return df
 
 
@@ -83,7 +92,7 @@ def add_frequency_encodings(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     df = df.copy().sort_values("TransactionDT").reset_index(drop=True)
     for col in cols:
         if col in df.columns:
-            df[f"{col}_freq"] = df.groupby(col, sort=False).cumcount()
+            df[f"{col}_freq"] = _strict_historical_count(df, [col])
     return df
 
 
@@ -93,7 +102,7 @@ def add_combination_feature(df: pd.DataFrame) -> pd.DataFrame:
         df["card1_addr1_freq"] = 0
         return df
     key = df["card1"].astype(str) + "_" + df["addr1"].fillna("nan").astype(str)
-    df["card1_addr1_freq"] = key.groupby(key, sort=False).cumcount()
+    df["card1_addr1_freq"] = _strict_historical_count(df.assign(_card1_addr1_key=key), ["_card1_addr1_key"])
     return df
 
 
