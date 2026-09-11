@@ -32,8 +32,15 @@ class FraudEnsemble:
         lgb_cfg = models_cfg.get("lightgbm", {})
         cat_cfg = models_cfg.get("catboost", {})
 
+        imbalance_strategy = cfg.get("imbalance", {}).get("strategy")
+        if imbalance_strategy is None:
+            imbalance_strategy = "both" if cfg.get("smote", {}).get("enabled", False) else "weights"
+        use_weights = imbalance_strategy in {"weights", "both"}
+
         xgb_params = {key: value for key, value in xgb_cfg.items() if key not in {"enabled", "random_state"}}
         xgb_params.update(tuned.get("XGBoost", {}).get("params", {}))
+        if not use_weights:
+            xgb_params.pop("scale_pos_weight", None)
         xgb_params.setdefault("eval_metric", xgb_cfg.get("eval_metric", "aucpr"))
         xgb_params.setdefault("tree_method", xgb_cfg.get("tree_method", "hist"))
         xgb_params.setdefault("random_state", seed)
@@ -41,14 +48,20 @@ class FraudEnsemble:
 
         lgb_params = {key: value for key, value in lgb_cfg.items() if key not in {"enabled", "random_state"}}
         lgb_params.update(tuned.get("LightGBM", {}).get("params", {}))
-        lgb_params.setdefault("is_unbalance", lgb_cfg.get("is_unbalance", True))
+        if not use_weights:
+            lgb_params.pop("is_unbalance", None)
+            lgb_params.pop("scale_pos_weight", None)
+        lgb_params.setdefault("is_unbalance", lgb_cfg.get("is_unbalance", True) if use_weights else False)
         lgb_params.setdefault("random_state", seed)
         lgb_params.setdefault("verbose", -1)
         self.lgb_model = LGBMClassifier(**lgb_params)
 
         cat_params = {key: value for key, value in cat_cfg.items() if key not in {"enabled", "random_seed"}}
         cat_params.update(tuned.get("CatBoost", {}).get("params", {}))
-        cat_params.setdefault("auto_class_weights", cat_cfg.get("auto_class_weights", "Balanced"))
+        if not use_weights:
+            cat_params.pop("auto_class_weights", None)
+            cat_params.pop("class_weights", None)
+        cat_params.setdefault("auto_class_weights", cat_cfg.get("auto_class_weights", "Balanced") if use_weights else None)
         cat_params.setdefault("loss_function", "Logloss")
         cat_params.setdefault("eval_metric", cat_cfg.get("eval_metric", "AUC"))
         cat_params.setdefault("random_seed", seed)
@@ -105,8 +118,6 @@ class FraudEnsemble:
             model.category_mappings = {}
             model.selected_v_columns = []
 
-        # Older checkpoints did not persist V-feature selection separately.
-        # Recover it exactly from the trained feature list so they remain serveable.
         if not model.selected_v_columns and model.feature_names:
             model.selected_v_columns = [name for name in model.feature_names if name.startswith("V")]
 
