@@ -36,7 +36,7 @@ GitHub Actions
        └── Docker validation/build
 
 Training Pipeline ──► Feature Engineering ──► Chronological Split
-                                             ├── Train ──► SMOTE
+                                             ├── Train ──► imbalance strategy
                                              ├── Validation ──► threshold tuning
                                              └── Final Test ──► untouched benchmark
                                                         │
@@ -46,6 +46,8 @@ Training Pipeline ──► Feature Engineering ──► Chronological Split
                                                         ▼
                                                Weighted Ensemble
 
+Historical Backfill ──► MongoDB transactions ──► FastAPI online features
+                                                        │
 FastAPI ──► MongoDB history ──► online features ──► model ──► prediction
    │                                                     │
    ├── /health                                            └── persistence
@@ -64,11 +66,12 @@ PSI     ──► prediction + feature drift
 |---|---|
 | Fraud classification | XGBoost + LightGBM + CatBoost |
 | Evaluation | Strict chronological train/validation/test split |
-| Imbalance handling | SMOTE on training data only + model class balancing |
+| Imbalance handling | Configurable SMOTE/model weighting ablation |
 | Tuning | Optuna, optimized for PR-AUC |
 | Decisioning | Validation-only cost-sensitive threshold selection |
 | Explainability | SHAP |
 | Online features | MongoDB |
+| Historical bootstrap | Idempotent MongoDB backfill from transaction history |
 | Serving | FastAPI + Uvicorn |
 | Tracking | MLflow |
 | Monitoring | PSI drift |
@@ -107,7 +110,23 @@ python train.py
 
 Training generates processed features and the model checkpoint under `models/checkpoints/`.
 
-### 4. Run the API stack
+### 4. Bootstrap historical MongoDB features
+
+Before serving on a fresh MongoDB instance, populate it with historical transactions so the first live requests can use causal frequency and velocity history:
+
+```bash
+python scripts/backfill_mongodb.py --source data/raw/train_transaction.csv
+```
+
+The backfill is idempotent through the unique `transaction_id` and preserves the original transaction data used by the online feature builder. Backfilled records are marked as `historical_backfill` and use an out-of-band `created_at`, so they do not appear as fresh serving events in monitoring windows.
+
+For a smoke test first:
+
+```bash
+python scripts/backfill_mongodb.py --source data/raw/train_transaction.csv --limit 1000
+```
+
+### 5. Run the API stack
 
 ```bash
 docker compose up --build -d
@@ -128,6 +147,29 @@ Stop with:
 ```bash
 docker compose down
 ```
+
+## Imbalance Strategy Ablation
+
+The project now makes imbalance handling explicit instead of silently combining oversampling and class weighting. The supported strategies are:
+
+```text
+both    = SMOTE + model class weighting
+weights = original training distribution + model class weighting
+smote   = SMOTE + no model class weighting
+none    = original training distribution + no model class weighting
+```
+
+Run the fixed temporal validation ablation with:
+
+```bash
+python scripts/compare_imbalance.py
+```
+
+This compares PR-AUC, ROC-AUC, precision, recall, F1, validation-selected cost threshold, and validation cost using exactly the same cached chronological split. The final test set is intentionally not used for strategy selection.
+
+The current configuration remains `both` until this validation experiment demonstrates that another strategy is better. XGBoost's `scale_pos_weight` is specifically intended for unbalanced classes, while LightGBM documents that class-balancing options can improve aggregate metrics but can hurt probability estimates; this is why the alternatives should be measured rather than assumed. citeturn0search1turn0search0
+
+After selecting a strategy, retrain with that strategy and run the final untouched-test evaluation once. Do not choose the winner using the final test set.
 
 ## API
 
@@ -175,7 +217,7 @@ PSI is reported as stable (`< 0.10`), warning (`0.10–0.25`), or drift (`>= 0.2
 
 The production benchmark uses chronological periods:
 
-- **70% training** — model fitting and SMOTE.
+- **70% training** — model fitting and imbalance strategy.
 - **15% validation** — model evaluation and threshold selection.
 - **15% final test** — completely untouched during training and threshold selection.
 
@@ -212,7 +254,7 @@ FraudX includes:
 - Selected Vesta features.
 - Training-fitted categorical mappings.
 
-Time-dependent counts and velocity features use prior transactions only.
+Time-dependent counts and velocity features use prior transactions only. Offline training and online MongoDB serving use the same strict historical timestamp semantics, excluding same-timestamp rows from prior-history features.
 
 ## MLflow
 
@@ -240,7 +282,7 @@ Run:
 pytest -q
 ```
 
-The test suite covers temporal splitting, causal feature behavior, evaluation/thresholding, ensemble outputs, tuning helpers, monitoring, and project configuration.
+The test suite covers temporal splitting, offline/online causal feature behavior, evaluation/thresholding, ensemble outputs, tuning helpers, monitoring, and project configuration.
 
 ## CI/CD
 
@@ -260,6 +302,7 @@ A push to `main` publishes the API image to GHCR.
 ├── app/                  # Streamlit dashboard + visualizations
 ├── data/                 # dataset instructions; raw/processed data ignored
 ├── docs/                 # monitoring documentation
+├── scripts/              # imbalance ablation + MongoDB historical backfill
 ├── src/
 │   ├── data/             # loading and feature engineering
 │   ├── models/           # ensemble implementation
