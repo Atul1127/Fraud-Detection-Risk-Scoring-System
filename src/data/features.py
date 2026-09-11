@@ -62,11 +62,19 @@ def add_velocity_features(df: pd.DataFrame, time_windows: list[int]) -> pd.DataF
 
 def add_time_since_last_txn(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy().sort_values("TransactionDT").reset_index(drop=True)
-    if "card1" in df and "TransactionDT" in df:
-        df["time_since_last_txn"] = df.groupby("card1")["TransactionDT"].diff().fillna(0)
-    else:
+    if "card1" not in df or "TransactionDT" not in df:
         df["time_since_last_txn"] = 0.0
-    return df
+        return df
+
+    unique = df[["card1", "TransactionDT"]].drop_duplicates().sort_values(
+        ["card1", "TransactionDT"]
+    )
+    unique["prev_dt"] = unique.groupby("card1")["TransactionDT"].shift(1)
+    df = df.merge(unique, on=["card1", "TransactionDT"], how="left", sort=False)
+    df["time_since_last_txn"] = (
+        df["TransactionDT"] - df["prev_dt"].fillna(df["TransactionDT"])
+    ).astype(float)
+    return df.drop(columns=["prev_dt"])
 
 
 def _strict_historical_count(df: pd.DataFrame, group_cols: list[str]) -> pd.Series:
@@ -102,7 +110,9 @@ def add_combination_feature(df: pd.DataFrame) -> pd.DataFrame:
         df["card1_addr1_freq"] = 0
         return df
     key = df["card1"].astype(str) + "_" + df["addr1"].fillna("nan").astype(str)
-    df["card1_addr1_freq"] = _strict_historical_count(df.assign(_card1_addr1_key=key), ["_card1_addr1_key"])
+    df["card1_addr1_freq"] = _strict_historical_count(
+        df.assign(_card1_addr1_key=key), ["_card1_addr1_key"]
+    )
     return df
 
 
