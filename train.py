@@ -93,9 +93,19 @@ def main() -> None:
             )
             print("  Cached processed features and train-fitted metadata.")
 
-        if not args.skip_smote:
+        strategy = cfg.get("imbalance", {}).get("strategy")
+        if strategy is None:
+            strategy = "both" if cfg.get("smote", {}).get("enabled", False) else "weights"
+        if args.skip_smote:
+            strategy = "weights" if strategy in {"both", "smote"} else strategy
+        cfg["imbalance"] = {"strategy": strategy}
+        print(f"\nImbalance strategy: {strategy}")
+
+        if strategy in {"smote", "both"}:
             print("Applying SMOTE to training data only...")
             X_train, y_train = apply_smote(X_train, y_train, cfg)
+        else:
+            print("Skipping SMOTE; training uses original class distribution.")
 
         print("\nTraining ensemble...")
         trainer = Trainer(cfg)
