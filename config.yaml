@@ -62,9 +62,8 @@ features:
       - 86400
       - 604800
 imbalance:
-  # Experiment with: both, weights, smote, none.
-  # Keep 'both' until validation selects a different strategy.
-  strategy: both
+  # Selected from chronological validation ablation: no SMOTE and no class weighting.
+  strategy: none
 mlflow:
   enabled: true
   tracking_uri: sqlite:///mlflow.db
