@@ -17,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bootstrap MongoDB with historical fraud transactions")
     parser.add_argument("--source", default="data/raw/train_transaction.csv", help="Historical transaction CSV")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
+    parser.add_argument("--skip", type=int, default=0, help="Number of source rows to skip before starting; useful for resuming an interrupted backfill")
     parser.add_argument("--limit", type=int, default=None, help="Optional row limit for a dry run")
     return parser.parse_args()
 
@@ -28,6 +29,8 @@ def main() -> None:
         raise FileNotFoundError(f"Historical transaction file not found: {source}")
     if args.batch_size < 1:
         raise ValueError("--batch-size must be positive")
+    if args.skip < 0:
+        raise ValueError("--skip must be non-negative")
 
     uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     database_name = os.getenv("MONGODB_DATABASE", "fraudx")
@@ -46,8 +49,17 @@ def main() -> None:
     usecols = None  # Keep all transaction columns so future feature additions can reuse the backfill.
     processed = 0
     inserted_or_updated = 0
+    skipped = 0
 
     for chunk in pd.read_csv(source, chunksize=args.batch_size, usecols=usecols):
+        if args.skip:
+            if skipped + len(chunk) <= args.skip:
+                skipped += len(chunk)
+                continue
+            drop_count = args.skip - skipped
+            chunk = chunk.iloc[drop_count:]
+            skipped = args.skip
+
         if args.limit is not None:
             remaining = args.limit - processed
             if remaining <= 0:
@@ -89,7 +101,9 @@ def main() -> None:
             break
 
     client.close()
-    print(f"\nBackfill complete: {processed:,} source rows processed.")
+    total_processed = args.skip + processed
+    print(f"\nBackfill complete: {processed:,} source rows processed after skipping {args.skip:,}.")
+    print(f"Source position reached: {total_processed:,} rows.")
     print("The backfilled records are timestamped outside the serving-monitoring window and are available to causal online feature queries.")
 
 
