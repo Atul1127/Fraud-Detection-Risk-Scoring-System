@@ -62,8 +62,9 @@ def main() -> None:
             print("Engineering causal features...")
             # History-dependent features are built on the full chronological stream so
             # validation/test rows can use legitimate history from earlier rows.
-            # Encoding and Vesta feature selection are fitted only on train below.
-            df_feat = build_features(df, cfg, select_v=False)
+            # Categorical encoding is deliberately deferred until after the temporal
+            # split so category vocabularies are fitted on training data only.
+            df_feat = build_features(df, cfg, select_v=False, encode_categories=False)
 
             X_train, X_val, X_test, y_train, y_val, y_test = train_val_test_split(df_feat, cfg)
             print(
