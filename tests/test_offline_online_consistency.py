@@ -87,9 +87,12 @@ def _assert_online_matches_offline(rows, current):
     frame = pd.DataFrame(rows + [current])
     mappings = fit_category_mappings(frame)
     offline = build_features(frame, CFG, category_mappings=mappings)
-    current_offline = offline.loc[offline["TransactionID"].eq(current["TransactionID"])].drop(
-        columns=["TransactionID"]
-    )
+
+    # build_features intentionally returns model features rather than the raw identifier.
+    # The current transaction is the final row of the frame, so select it by position.
+    current_offline = offline.iloc[[-1]].copy()
+    if "TransactionID" in current_offline.columns:
+        current_offline = current_offline.drop(columns=["TransactionID"])
 
     model = SimpleNamespace(
         category_mappings=mappings,
