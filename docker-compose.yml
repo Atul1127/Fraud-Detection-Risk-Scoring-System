@@ -23,6 +23,10 @@ services:
     environment:
       MONGODB_URI: mongodb://mongodb:27017
       MONGODB_DATABASE: fraudx
+    volumes:
+      # Training checkpoints are local artifacts and intentionally not committed to Git.
+      # Mount them into the container so the API serves the locally trained model.
+      - ./models/checkpoints:/app/models/checkpoints:ro
     depends_on:
       mongodb:
         condition: service_healthy
