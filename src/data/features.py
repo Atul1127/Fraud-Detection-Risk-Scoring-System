@@ -173,6 +173,7 @@ def build_features(
     category_mappings: dict[str, list] | None = None,
     selected_v_columns: list[str] | None = None,
     select_v: bool = True,
+    encode_categories: bool = True,
 ) -> pd.DataFrame:
     """Build deterministic, time-ordered features without future-row counts."""
     df = df.copy().sort_values("TransactionDT").reset_index(drop=True)
@@ -198,7 +199,9 @@ def build_features(
     if select_v:
         df = select_v_features(df, keep=50, selected_columns=selected_v_columns)
     df = drop_id_cols(df)
-    return encode_categoricals(df, category_mappings=category_mappings)
+    if encode_categories:
+        df = encode_categoricals(df, category_mappings=category_mappings)
+    return df
 
 
 def apply_smote(
