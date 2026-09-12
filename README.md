@@ -15,14 +15,14 @@ FraudX is a production-style fraud detection project built on the IEEE-CIS Fraud
 
 - **590,540 transactions** processed from the IEEE-CIS dataset.
 - **Chronological 70/15/15 train/validation/test split** with the final test period kept untouched.
-- **Frozen serving threshold:** `0.420`, selected on validation data using false-positive : false-negative costs of `1 : 10`.
-- **Final untouched-test:** ROC-AUC **0.8394**, PR-AUC **0.4234**, Precision **0.2601**, Recall **0.5813**, F1 **0.3594**.
+- **Final serving threshold:** `0.051`, selected on validation data using false-positive : false-negative costs of `1 : 10`.
+- **Final untouched-test:** ROC-AUC **0.9067**, PR-AUC **0.5284**, Precision **0.2785**, Recall **0.6695**, F1 **0.3934**.
 - XGBoost + LightGBM + CatBoost weighted ensemble with **35/35/30** weights.
-- Training-only SMOTE; validation and final test remain untouched.
+- Imbalance handling was explicitly ablated; the final model uses the **original class distribution with no SMOTE and no model class weighting**.
 - FastAPI inference with MongoDB historical features and prediction persistence.
-- MLflow tracking, SHAP explanations, PSI drift monitoring, Docker Compose, and CI.
+- MLflow tracking, SHAP explanations, PSI drift monitoring, Docker Compose, and GitHub Actions.
 
-> **Evaluation note:** The final test metrics are the primary benchmark. The threshold is selected on validation data and frozen before final test evaluation.
+> **Evaluation note:** The final test metrics are the primary benchmark. The threshold and imbalance strategy are selected on validation data and frozen before final test evaluation.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ GitHub Actions
        └── Docker validation/build
 
 Training Pipeline ──► Feature Engineering ──► Chronological Split
-                                             ├── Train ──► imbalance strategy
+                                             ├── Train ──► selected imbalance strategy
                                              ├── Validation ──► threshold tuning
                                              └── Final Test ──► untouched benchmark
                                                         │
@@ -66,7 +66,7 @@ PSI     ──► prediction + feature drift
 |---|---|
 | Fraud classification | XGBoost + LightGBM + CatBoost |
 | Evaluation | Strict chronological train/validation/test split |
-| Imbalance handling | Configurable SMOTE/model weighting ablation |
+| Imbalance handling | Validation-based ablation of SMOTE and model weighting |
 | Tuning | Optuna, optimized for PR-AUC |
 | Decisioning | Validation-only cost-sensitive threshold selection |
 | Explainability | SHAP |
@@ -150,7 +150,7 @@ docker compose down
 
 ## Imbalance Strategy Ablation
 
-The project now makes imbalance handling explicit instead of silently combining oversampling and class weighting. The supported strategies are:
+The project makes imbalance handling explicit instead of silently combining oversampling and class weighting. The supported strategies are:
 
 ```text
 both    = SMOTE + model class weighting
@@ -159,17 +159,22 @@ smote   = SMOTE + no model class weighting
 none    = original training distribution + no model class weighting
 ```
 
-Run the fixed temporal validation ablation with:
+The four strategies were compared on the same chronological validation split. The final test set was not used for strategy selection.
+
+| Strategy | Validation PR-AUC | Validation ROC-AUC | Precision | Recall | F1 | Validation cost |
+|---|---:|---:|---:|---:|---:|---:|
+| **none** | **0.5905** | **0.9239** | 0.3434 | **0.6982** | 0.4604 | **3,241** |
+| weights | 0.5770 | 0.9212 | **0.3522** | 0.6755 | **0.4630** | 13,649 |
+| smote | 0.4714 | 0.8243 | 0.3041 | 0.5648 | 0.3953 | 17,172 |
+| both | 0.4624 | 0.8557 | 0.2902 | 0.5897 | 0.3889 | 16,869 |
+
+The `none` strategy was selected because it produced the highest validation PR-AUC and ROC-AUC, highest recall, and lowest validation cost. The model was then retrained with that strategy and evaluated once on the untouched chronological test set.
+
+Run the ablation yourself with:
 
 ```bash
 python scripts/compare_imbalance.py
 ```
-
-This compares PR-AUC, ROC-AUC, precision, recall, F1, validation-selected cost threshold, and validation cost using exactly the same cached chronological split. The final test set is intentionally not used for strategy selection.
-
-The current configuration remains `both` until this validation experiment demonstrates that another strategy is better. XGBoost's `scale_pos_weight` is specifically intended for unbalanced classes, while LightGBM documents that class-balancing options can improve aggregate metrics but can hurt probability estimates; this is why the alternatives should be measured rather than assumed. citeturn0search1turn0search0
-
-After selecting a strategy, retrain with that strategy and run the final untouched-test evaluation once. Do not choose the winner using the final test set.
 
 ## API
 
@@ -223,12 +228,12 @@ The production benchmark uses chronological periods:
 
 | Metric | Final test |
 |---|---:|
-| ROC-AUC | **0.8394** |
-| PR-AUC | **0.4234** |
-| Precision | **0.2601** |
-| Recall | **0.5813** |
-| F1 | **0.3594** |
-| Frozen threshold | **0.420** |
+| ROC-AUC | **0.9067** |
+| PR-AUC | **0.5284** |
+| Precision | **0.2785** |
+| Recall | **0.6695** |
+| F1 | **0.3934** |
+| Frozen threshold | **0.051** |
 
 ### Threshold objective
 
@@ -279,7 +284,7 @@ The dashboard requires trained checkpoints and processed validation data.
 Run:
 
 ```bash
-pytest -q
+python -m pytest -q
 ```
 
 The test suite covers temporal splitting, offline/online causal feature behavior, evaluation/thresholding, ensemble outputs, tuning helpers, monitoring, and project configuration.
@@ -313,7 +318,6 @@ A push to `main` publishes the API image to GHCR.
 │   ├── train.py          # training orchestration
 │   └── tune.py           # Optuna tuning
 ├── tests/                # automated tests
-├── config.yaml           # project configuration
 ├── Dockerfile
 ├── Dockerfile.mlflow
 └── docker-compose.yml
