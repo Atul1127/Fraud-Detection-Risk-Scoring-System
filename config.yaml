@@ -9,7 +9,7 @@ data:
   train_file: train_transaction.csv
 ensemble:
   # Frozen validation-selected threshold used by the serving API.
-  default_threshold: 0.420
+  default_threshold: 0.051
 evaluation:
   optimize_threshold: true
   threshold_strategy: cost
