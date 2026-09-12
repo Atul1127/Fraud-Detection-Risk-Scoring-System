@@ -15,12 +15,14 @@ FraudX is a production-style fraud detection project built on the IEEE-CIS Fraud
 
 - **590,540 transactions** processed from the IEEE-CIS dataset.
 - **Chronological 70/15/15 train/validation/test split** with the final test period kept untouched.
-- **Final serving threshold:** `0.051`, selected on validation data using false-positive : false-negative costs of `1 : 10`.
-- **Final untouched-test:** ROC-AUC **0.9067**, PR-AUC **0.5284**, Precision **0.2785**, Recall **0.6695**, F1 **0.3934**.
+- **Final serving threshold:** `0.05547`, selected on validation data using false-positive : false-negative costs of `1 : 10`.
+- **Final untouched-test:** ROC-AUC **0.9049**, PR-AUC **0.5320**, Precision **0.3000**, Recall **0.6562**, F1 **0.4117**.
 - XGBoost + LightGBM + CatBoost weighted ensemble with **35/35/30** weights.
 - Imbalance handling was explicitly ablated; the final model uses the **original class distribution with no SMOTE and no model class weighting**.
+- **22 categorical mappings** are fitted from training data only and persisted for serving.
 - FastAPI inference with MongoDB historical features and prediction persistence.
 - MLflow tracking, SHAP explanations, PSI drift monitoring, Docker Compose, and GitHub Actions.
+- End-to-end serving path validated locally: API health, model loading, MongoDB connectivity, online feature construction, prediction, and persistence all passed.
 
 > **Evaluation note:** The final test metrics are the primary benchmark. The threshold and imbalance strategy are selected on validation data and frozen before final test evaluation.
 
@@ -108,11 +110,17 @@ The dataset is intentionally excluded from Git because of its size and Kaggle di
 python train.py
 ```
 
-Training generates processed features and the model checkpoint under `models/checkpoints/`.
+Training generates processed features, training-fitted preprocessing metadata, and model checkpoints under `models/checkpoints/`.
+
+If you are regenerating artifacts after changing preprocessing logic, force preprocessing with:
+
+```bash
+python train.py --force-preprocess
+```
 
 ### 4. Bootstrap historical MongoDB features
 
-Before serving on a fresh MongoDB instance, populate it with historical transactions so the first live requests can use causal frequency and velocity history:
+Before serving on a fresh MongoDB instance, populate it with historical transactions so live requests can use causal frequency and velocity history:
 
 ```bash
 python scripts/backfill_mongodb.py --source data/raw/train_transaction.csv
@@ -147,6 +155,8 @@ Stop with:
 ```bash
 docker compose down
 ```
+
+> If an existing `fraudx-mongodb` container from another Compose project is present, remove or stop the stale container before starting a clean Compose deployment. Do not delete the MongoDB volume if you need its historical data.
 
 ## Imbalance Strategy Ablation
 
@@ -209,6 +219,8 @@ Example:
 }
 ```
 
+A validated local inference request returned HTTP `200` with a fraud probability, prediction, frozen threshold, model version, and successful persistence to MongoDB.
+
 ### Monitoring
 
 ```text
@@ -228,12 +240,23 @@ The production benchmark uses chronological periods:
 
 | Metric | Final test |
 |---|---:|
-| ROC-AUC | **0.9067** |
-| PR-AUC | **0.5284** |
-| Precision | **0.2785** |
-| Recall | **0.6695** |
-| F1 | **0.3934** |
-| Frozen threshold | **0.051** |
+| ROC-AUC | **0.9049** |
+| PR-AUC | **0.5320** |
+| Precision | **0.3000** |
+| Recall | **0.6562** |
+| F1 | **0.4117** |
+| Frozen threshold | **0.05547** |
+
+### Validation snapshot from final retraining
+
+| Metric | Validation |
+|---|---:|
+| ROC-AUC | **0.9246** |
+| PR-AUC | **0.5972** |
+| Precision | **0.3692** |
+| Recall | **0.6969** |
+| F1 | **0.4827** |
+| Selected threshold | **0.05547** |
 
 ### Threshold objective
 
@@ -261,6 +284,8 @@ FraudX includes:
 
 Time-dependent counts and velocity features use prior transactions only. Offline training and online MongoDB serving use the same strict historical timestamp semantics, excluding same-timestamp rows from prior-history features.
 
+Categorical mappings are fitted on training data only, persisted with the model artifacts, and reused by the online feature builder to keep preprocessing consistent between training and serving.
+
 ## MLflow
 
 Experiment: `FraudX-Fraud-Detection`
@@ -287,7 +312,7 @@ Run:
 python -m pytest -q
 ```
 
-The test suite covers temporal splitting, offline/online causal feature behavior, evaluation/thresholding, ensemble outputs, tuning helpers, monitoring, and project configuration.
+The automated test suite covers temporal splitting, offline/online causal feature behavior, evaluation/thresholding, ensemble outputs, tuning helpers, monitoring, and project configuration.
 
 ## CI/CD
 
